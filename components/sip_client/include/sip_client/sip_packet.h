@@ -22,8 +22,8 @@
 class SipPacket
 {
 public:
-
-    enum class Status {
+    enum class Status
+    {
         TRYING_100,
         SESSION_PROGRESS_183,
         OK_200,
@@ -36,7 +36,8 @@ public:
         UNKNOWN,
     };
 
-    enum class Method {
+    enum class Method
+    {
         NOTIFY,
         BYE,
         INFO,
@@ -44,21 +45,21 @@ public:
         UNKNOWN
     };
 
-    enum class ContentType {
-	    APPLICATION_DTMF_RELAY,
-	    UNKNOWN
+    enum class ContentType
+    {
+        APPLICATION_DTMF_RELAY,
+        UNKNOWN
     };
 
-
-    SipPacket(const char* input_buffer, size_t input_buffer_length)
-    : m_buffer(input_buffer)
-    , m_buffer_length(input_buffer_length)
-    , m_status(Status::UNKNOWN)
-    , m_method(Method::UNKNOWN)
-    , m_content_type(ContentType::UNKNOWN)
-    , m_content_length(0)
-    , m_realm()
-    , m_nonce()
+    SipPacket(char* input_buffer, size_t input_buffer_length)
+        : m_buffer(input_buffer)
+        , m_buffer_length(input_buffer_length)
+        , m_status(Status::UNKNOWN)
+        , m_method(Method::UNKNOWN)
+        , m_content_type(ContentType::UNKNOWN)
+        , m_content_length(0)
+        , m_realm()
+        , m_nonce()
     {
     }
 
@@ -90,7 +91,7 @@ public:
 
     uint32_t get_content_length() const
     {
-	return m_content_length;
+        return m_content_length;
     }
 
     std::string get_nonce() const
@@ -138,6 +139,11 @@ public:
         return m_via;
     }
 
+    std::string get_p_called_party_id() const
+    {
+        return m_p_called_party_id;
+    }
+
     char get_dtmf_signal() const
     {
         return m_dtmf_signal;
@@ -147,12 +153,19 @@ public:
     {
         return m_dtmf_duration;
     }
+    std::string get_media() const
+    {
+        return m_media;
+    }
+    std::string get_cip() const
+    {
+        return m_cip;
+    }
 
 private:
-
     bool parse_header()
     {
-        const char* start_position = m_buffer;
+        char* start_position = m_buffer;
         char* end_position = strstr(start_position, LINE_ENDING);
 
         m_method = Method::UNKNOWN;
@@ -164,8 +177,11 @@ private:
         m_to = "";
         m_from = "";
         m_via = "";
+        m_p_called_party_id = "";
         m_dtmf_signal = ' ';
         m_dtmf_duration = 0;
+        m_cip = "";
+        m_media = "";
         m_body = nullptr;
 
         if (end_position == nullptr)
@@ -177,7 +193,7 @@ private:
         uint32_t line_number = 0;
         do
         {
-            size_t length = end_position - start_position;
+            size_t length = static_cast<size_t>(end_position - start_position);
             if (length == 0) //line only contains the line ending
             {
                 ESP_LOGV(TAG, "Valid end of header detected");
@@ -192,7 +208,7 @@ private:
                 }
                 return true;
             }
-            const char* next_start_position = end_position + LINE_ENDING_LEN;
+            char* next_start_position = end_position + LINE_ENDING_LEN;
             line_number++;
 
             //create a proper null terminated c string
@@ -207,7 +223,7 @@ private:
                 m_status = convert_status(code);
             }
             else if ((strncmp(WWW_AUTHENTICATE, start_position, strlen(WWW_AUTHENTICATE)) == 0)
-                    || (strncmp(PROXY_AUTHENTICATE, start_position, strlen(PROXY_AUTHENTICATE)) == 0))
+                || (strncmp(PROXY_AUTHENTICATE, start_position, strlen(PROXY_AUTHENTICATE)) == 0))
             {
                 ESP_LOGV(TAG, "Detect authenticate line");
                 //read realm and nonce from authentication line
@@ -224,7 +240,7 @@ private:
             else if (strncmp(CONTACT, start_position, strlen(CONTACT)) == 0)
             {
                 ESP_LOGV(TAG, "Detect contact line");
-                const char* last_pos = strstr(start_position, ">");
+                char* last_pos = strstr(start_position, ">");
                 if (last_pos == nullptr)
                 {
                     ESP_LOGW(TAG, "Failed to read content of contact line");
@@ -260,20 +276,24 @@ private:
             {
                 m_call_id = std::string(start_position + strlen(CALL_ID));
             }
+            else if (strstr(start_position, P_CALLED_PARTY_ID) == start_position)
+            {
+                m_p_called_party_id = std::string(start_position + strlen(P_CALLED_PARTY_ID));
+            }
             else if (strstr(start_position, CONTENT_TYPE) == start_position)
             {
                 m_content_type = convert_content_type(start_position + strlen(CONTENT_TYPE));
             }
             else if (strstr(start_position, CONTENT_LENGTH) == start_position)
             {
-                long length = strtol(start_position + strlen(CONTENT_LENGTH), nullptr, 10);
-                if (length < 0)
+                long content_length = strtol(start_position + strlen(CONTENT_LENGTH), nullptr, 10);
+                if (content_length < 0)
                 {
-                    ESP_LOGW(TAG, "Invalid content length %ld", length);
+                    ESP_LOGW(TAG, "Invalid content length %ld", content_length);
                 }
                 else
                 {
-                    m_content_length = length;
+                    m_content_length = static_cast<uint32_t>(content_length);
                 }
             }
 
@@ -286,7 +306,7 @@ private:
             //go to next line
             start_position = next_start_position;
             end_position = strstr(start_position, LINE_ENDING);
-        } while(end_position);
+        } while (end_position);
 
         //no line only containing the line ending found :(
         return false;
@@ -299,7 +319,7 @@ private:
             return true;
         }
 
-        const char* start_position = m_body;
+        char* start_position = m_body;
         char* end_position = strstr(start_position, LINE_ENDING);
 
         if (end_position == nullptr)
@@ -310,13 +330,13 @@ private:
 
         do
         {
-            size_t length = end_position - start_position;
+            size_t length = static_cast<size_t>(end_position - start_position);
             if (length == 0) //line only contains the line ending
             {
                 return true;
             }
 
-            const char* next_start_position = end_position + LINE_ENDING_LEN;
+            char* next_start_position = end_position + LINE_ENDING_LEN;
 
             //create a proper null terminated c string
             //from here on string functions may be used!
@@ -336,14 +356,22 @@ private:
                 }
                 else
                 {
-                    m_dtmf_duration = duration;
+                    m_dtmf_duration = static_cast<uint16_t>(duration);
                 }
+            }
+            else if (strstr(start_position, MEDIA) == start_position)
+            {
+                m_media = std::string(start_position + strlen(MEDIA));
+            }
+            else if (strstr(start_position, CIP) == start_position)
+            {
+                m_cip = std::string(start_position + strlen(CIP));
             }
 
             //go to next line
             start_position = next_start_position;
             end_position = strstr(start_position, LINE_ENDING);
-        } while(end_position);
+        } while (end_position);
 
         return true;
     }
@@ -375,19 +403,28 @@ private:
         return true;
     }
 
-    Status convert_status(uint32_t code) const
+    Status convert_status(long code) const
     {
         switch (code)
         {
-        case 200: return Status::OK_200;
-        case 401: return Status::UNAUTHORIZED_401;
-        case 100: return Status::TRYING_100;
-        case 183: return Status::SESSION_PROGRESS_183;
-        case 500: return Status::SERVER_ERROR_500;
-        case 486: return Status::BUSY_HERE_486;
-        case 487: return Status::REQUEST_CANCELLED_487;
-        case 407: return Status::PROXY_AUTH_REQ_407;
-        case 603: return Status::DECLINE_603;
+        case 200:
+            return Status::OK_200;
+        case 401:
+            return Status::UNAUTHORIZED_401;
+        case 100:
+            return Status::TRYING_100;
+        case 183:
+            return Status::SESSION_PROGRESS_183;
+        case 500:
+            return Status::SERVER_ERROR_500;
+        case 486:
+            return Status::BUSY_HERE_486;
+        case 487:
+            return Status::REQUEST_CANCELLED_487;
+        case 407:
+            return Status::PROXY_AUTH_REQ_407;
+        case 603:
+            return Status::DECLINE_603;
         }
         return Status::UNKNOWN;
     }
@@ -415,14 +452,14 @@ private:
 
     ContentType convert_content_type(const char* input) const
     {
-	if (strstr(input, APPLICATION_DTMF_RELAY) == input)
-	{
-	    return ContentType::APPLICATION_DTMF_RELAY;
-	}
+        if (strstr(input, APPLICATION_DTMF_RELAY) == input)
+        {
+            return ContentType::APPLICATION_DTMF_RELAY;
+        }
         return ContentType::UNKNOWN;
     }
 
-    const char* m_buffer;
+    char* m_buffer;
     const size_t m_buffer_length;
 
     Status m_status;
@@ -439,13 +476,17 @@ private:
     std::string m_to;
     std::string m_from;
     std::string m_via;
-    char m_dtmf_signal;
+    std::string m_p_called_party_id;
+    std::string m_media;
+    std::string m_cip;
+
+    char* m_body;
+
     uint16_t m_dtmf_duration;
-    const char* m_body;
+    char m_dtmf_signal;
 
     static constexpr const char* LINE_ENDING = "\r\n";
     static constexpr size_t LINE_ENDING_LEN = 2;
-
 
     static constexpr const char* TAG = "SipPacket";
     static constexpr const char* SIP_2_0_SPACE = "SIP/2.0 ";
@@ -455,6 +496,7 @@ private:
     static constexpr const char* TO = "To: ";
     static constexpr const char* FROM = "From: ";
     static constexpr const char* VIA = "Via: ";
+    static constexpr const char* P_CALLED_PARTY_ID = "P-Called-Party-ID: ";
     static constexpr const char* C_SEQ = "CSeq: ";
     static constexpr const char* CALL_ID = "Call-ID: ";
     static constexpr const char* CONTENT_TYPE = "Content-Type: ";
@@ -468,4 +510,6 @@ private:
     static constexpr const char* APPLICATION_DTMF_RELAY = "application/dtmf-relay";
     static constexpr const char* SIGNAL = "Signal=";
     static constexpr const char* DURATION = "Duration=";
+    static constexpr const char* MEDIA = "m=";
+    static constexpr const char* CIP = "c=IN IP4 ";
 };
